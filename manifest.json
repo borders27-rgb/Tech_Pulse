@@ -1,0 +1,9 @@
+{
+  "name": "TechPulse",
+  "short_name": "TechPulse",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0b0c10",
+  "theme_color": "#7c5cff",
+  "icons": []
+}
