@@ -1,0 +1,10 @@
+name = "techpulse-worker"
+main = "src/index.ts"
+compatibility_date = "2025-09-30"
+
+[vars]
+# Comma-separated list of RSS/Atom feed URLs for TechPulse to aggregate.
+FEEDS = "https://techcrunch.com/feed/,https://feeds.arstechnica.com/arstechnica/index,https://www.theverge.com/rss/index.xml,https://hnrss.org/newest?count=30,https://www.reddit.com/r/MachineLearning/.rss,https://www.reddit.com/r/technology/.rss,https://www.wired.com/feed/rss,https://www.bgr.com/feed/,https://www.apple.com/newsroom/rss-feed.rss,https://gizmodo.com/rss,https://www.bloomberg.com/feed/podcast,https://9to5mac.com/feed/,https://www.businessinsider.com/us?format=rss,https://www.pcmag.com/feeds/all,https://feeds.reuters.com/reuters/technologyNews,https://mashable.com/feed,https://www.esquire.com/rss/all.xml,https://www.axios.com/rss,https://www.cultofmac.com/feed/,https://www.nytimes.com/wirecutter/feed/,https://www.cnet.com/rss/news/,https://www.marketwatch.com/rss/topstories,https://www.macrumors.com/macrumors.xml,https://www.barrons.com/feed,https://www.engadget.com/rss.xml,https://fortune.com/feed,https://www.fastcompany.com/rss,https://www.pcgamer.com/rss,https://www.404media.co/feed"
+
+[triggers]
+crons = ["0 * * * *"]
