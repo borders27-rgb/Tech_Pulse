@@ -1,225 +1,112 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>TechPulse — Emerging Tech & Signals</title>
-  <meta name="description" content="Aggregate tech news, extract signals, score novelty, and connect to market data." />
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="manifest" href="manifest.json">
-  <link rel="icon" href="favicon.png" />
-  <link rel="stylesheet" href="assets/css/styles.css">
-  <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script defer src="assets/js/mock_data.js"></script>
-  <script type="module" defer src="assets/js/main.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>TechPulse Signals</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 40px auto; max-width: 800px; line-height: 1.5; }
+    h1 { font-size: 2rem; font-weight: bold; margin-bottom: 20px; }
+    ul { list-style: none; padding: 0; }
+    li { margin-bottom: 12px; border-bottom: 1px solid #e0e0e0; padding-bottom: 8px; }
+    a { color: #0366d6; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .date { display:block; font-size: 0.75rem; color: #6a737d; margin-top: 4px; }
+  </style>
 </head>
 <body>
-  <div id="app" class="app">
-    <aside class="sidebar">
-      <div class="brand">
-        <div class="brand-mark">TP</div>
-        <div class="brand-text">
-          <h1>TechPulse</h1>
-          <p class="tagline">Trends → Signals → Moves</p>
-        </div>
-      </div>
-      <nav class="nav">
-        <button data-view="trends" class="nav-item active">Trends</button>
-        <button data-view="feed" class="nav-item">Feed</button>
-        <button data-view="watchlist" class="nav-item">Watchlist</button>
-        <button data-view="alerts" class="nav-item">Alerts</button>
-        <button data-view="settings" class="nav-item">Settings</button>
-      </nav>
-      <div class="sidebar-footer">
-        <label class="switch">
-          <input id="toggleDark" type="checkbox">
-          <span class="slider"></span>
-        </label>
-        <span class="switch-label">Dark mode</span>
-      </div>
-    </aside>
+  <h1>TechPulse Signals</h1>
+  <p id="status">Loading tech signals...</p>
+  <ul id="list" style="display:none;"></ul>
+<script>
+const FEEDS = [
+  'https://techcrunch.com/feed/',
+  'https://feeds.arstechnica.com/arstechnica/index',
+  'https://www.theverge.com/rss/index.xml',
+  'https://hnrss.org/frontpage',
+  'https://www.reddit.com/r/MachineLearning/.rss',
+  'https://www.reddit.com/r/technology/.rss',
+  'https://www.wired.com/feed/rss',
+  'https://www.bgr.com/feed/',
+  'https://gizmodo.com/rss',
+  'https://feeds.bloomberg.com/bloomberg/technologynews',
+  'https://9to5mac.com/feed/',
+  'http://feeds.businessinsider.com/businessinsider',
+  'https://www.pcmag.com/feed',
+  'http://feeds.reuters.com/reuters/technologyNews',
+  'http://feeds.mashable.com/Mashable',
+  'https://www.esquire.com/rss/all.xml',
+  'https://www.cultofmac.com/feed/',
+  'https://www.nytimes.com/wirecutter/feed/',
+  'https://www.cnet.com/rss/news/',
+  'https://feeds.marketwatch.com/marketwatch/topstories/',
+  'https://www.macrumors.com/rss.php',
+  'https://www.engadget.com/rss.xml',
+  'http://fortune.com/feed/',
+  'https://www.fastcompany.com/rss',
+  'https://www.pcgamer.com/rss/'
+];
 
-    <main class="main">
-      <header class="topbar">
-        <div class="searchbar">
-          <input id="globalSearch" type="search" placeholder="Search trends, companies, tickers, sources…" />
-        </div>
-        <div class="actions">
-          <button id="refreshBtn" class="btn btn-primary">Refresh</button>
-          <button id="demoBtn" class="btn btn-ghost">Demo data</button>
-        </div>
-      </header>
+async function fetchFeed(url) {
+  const proxy = 'https://api.allorigins.win/raw?url=';
+  const res = await fetch(proxy + encodeURIComponent(url));
+  const text = await res.text();
+  const parser = new DOMParser();
+  const xml = parser.parseFromString(text, 'application/xml');
+  const items = Array.from(xml.querySelectorAll('item, entry')).map(item => {
+    const title = item.querySelector('title')?.textContent || '';
+    const linkNode = item.querySelector('link');
+    const linkAttr = linkNode?.getAttribute('href');
+    const link = linkAttr || linkNode?.textContent || '';
+    const pubNode = item.querySelector('pubDate') || item.querySelector('updated') || item.querySelector('published');
+    const pubDate = pubNode ? new Date(pubNode.textContent) : null;
+    return { title: title.trim(), link: link.trim(), pubDate };
+  });
+  return items;
+}
 
-      <section id="view-trends" class="view visible">
-        <div class="hero">
-          <h2>Emerging Tech Signals</h2>
-          <p>We aggregate sources, extract entities & concepts, and score momentum with a <strong>Novelty Index</strong> from 0–100.</p>
-        </div>
-        <div id="trendSummary" class="cards grid"></div>
-
-        <div class="panel">
-          <div class="panel-header">
-            <h3>Trend Details</h3>
-            <div class="panel-tools">
-              <select id="trendSort">
-                <option value="novelty">Sort: Novelty</option>
-                <option value="mentions">Sort: Mentions</option>
-                <option value="recent">Sort: Most Recent</option>
-              </select>
-            </div>
-          </div>
-          <div id="trendList" class="list"></div>
-        </div>
-      </section>
-
-      <section id="view-feed" class="view">
-        <div class="panel">
-          <div class="panel-header">
-            <h3>Unified Feed</h3>
-            <div class="panel-tools">
-              <select id="sourceFilter">
-                <option value="all">All sources</option>
-                <option value="news">News</option>
-                <option value="youtube">YouTube</option>
-                <option value="reddit">Reddit</option>
-                <option value="hackernews">Hacker News</option>
-              </select>
-            </div>
-          </div>
-          <div id="feedList" class="list"></div>
-        </div>
-      </section>
-
-      <section id="view-watchlist" class="view">
-        <div class="panel">
-          <div class="panel-header">
-            <h3>Watchlist</h3>
-            <div class="panel-tools">
-              <input id="addTicker" placeholder="Add ticker (e.g., NVDA, AAPL)" />
-              <button id="addTickerBtn" class="btn btn-primary">Add</button>
-            </div>
-          </div>
-          <div id="watchlist" class="grid"></div>
-        </div>
-      </section>
-
-      <section id="view-alerts" class="view">
-        <div class="panel">
-          <div class="panel-header">
-            <h3>Alerts</h3>
-            <div class="panel-tools">
-              <button id="newAlertBtn" class="btn btn-primary">New Alert</button>
-              <button id="runAlertsBtn" class="btn btn-ghost">Evaluate Now</button>
-            </div>
-          </div>
-          <div id="alertsList" class="list"></div>
-        </div>
-      </section>
-
-      <section id="view-settings" class="view">
-        <div class="panel">
-          <div class="panel-header">
-            <h3>Settings & Integrations</h3>
-          </div>
-          <div class="settings-grid">
-            <div class="settings-card">
-              <h4>APIs</h4>
-              <label>Alpha Vantage API Key
-                <input id="alphaKey" type="password" placeholder="sk-..." />
-              </label>
-              <label>Custom LLM Endpoint
-                <input id="llmEndpoint" placeholder="https://your-llm/route" />
-              </label>
-              <label>LLM Bearer Token
-                <input id="llmKey" type="password" placeholder="token..." />
-              </label>
-              <label>CORS Proxy (optional)
-                <input id="proxyUrl" placeholder="https://your-proxy.example.com/fetch?url=" />
-              </label>
-              <button id="saveSettingsBtn" class="btn btn-primary">Save</button>
-            </div>
-
-            <div class="settings-card">
-              <h4>Sources</h4>
-              <div class="small">Built-in connectors can fetch RSS/news, Hacker News, and more. In Demo Mode we use bundled data.</div>
-              <div id="sourceList" class="list"></div>
-              <div class="inline-form">
-                <input id="newSourceUrl" placeholder="Add RSS/JSON feed URL" />
-                <button id="addSourceBtn" class="btn btn-ghost">Add</button>
-              </div>
-            </div>
-
-            <div class="settings-card">
-              <h4>About</h4>
-              <p>TechPulse is a client-first, modular dashboard for <em>discovering</em> tech trends and <em>connecting</em> them to investable signals.</p>
-              <ul class="bullets">
-                <li>Novelty Index: momentum × recency × cross-source diversity</li>
-                <li>Entity extraction: companies, tickers, themes</li>
-                <li>Market link: fetch prices via Alpha Vantage (optional)</li>
-                <li>Alerts: threshold rules on novelty, mentions, and price moves</li>
-              </ul>
-              <p class="small">All settings persist locally in your browser. No accounts required.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-    </main>
-  </div>
-
-  <template id="tmpl-trend-card">
-    <article class="card trend-card">
-      <header>
-        <h4 class="trend-title"></h4>
-        <div class="trend-score" title="Novelty Index"></div>
-      </header>
-      <div class="trend-meta"></div>
-      <div class="trend-tags"></div>
-      <footer class="trend-actions">
-        <button class="btn btn-ghost btn-view">View</button>
-        <button class="btn btn-ghost btn-watch">Watch</button>
-      </footer>
-    </article>
-  </template>
-
-  <template id="tmpl-feed-item">
-    <article class="feed-item">
-      <div class="source-pill"></div>
-      <a class="title" target="_blank" rel="noopener"></a>
-      <div class="summary"></div>
-      <div class="meta"></div>
-    </article>
-  </template>
-
-  <template id="tmpl-watch-card">
-    <article class="card watch-card">
-      <header>
-        <h4 class="ticker"></h4>
-        <button class="btn btn-ghost btn-remove">Remove</button>
-      </header>
-      <canvas class="priceChart" height="120"></canvas>
-      <div class="related"></div>
-    </article>
-  </template>
-
-  <template id="tmpl-alert-item">
-    <article class="alert-item">
-      <div class="rule"></div>
-      <div class="status"></div>
-      <div class="actions">
-        <button class="btn btn-ghost btn-run">Run</button>
-        <button class="btn btn-ghost btn-delete">Delete</button>
-      </div>
-    </article>
-  </template>
-
-  <script>
-    if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker.register("service-worker.js");
-      });
+async function loadFeeds() {
+  let allItems = [];
+  for (const feed of FEEDS) {
+    try {
+      const items = await fetchFeed(feed);
+      allItems.push(...items);
+    } catch (err) {
+      console.error('Error fetching', feed, err);
     }
-  </script>
+  }
+  allItems.sort((a, b) => {
+    const at = a.pubDate ? a.pubDate.getTime() : 0;
+    const bt = b.pubDate ? b.pubDate.getTime() : 0;
+    return bt - at;
+  });
+  const list = document.getElementById('list');
+  const status = document.getElementById('status');
+  if (allItems.length === 0) {
+    status.textContent = 'No items found.';
+    return;
+  }
+  status.style.display = 'none';
+  list.style.display = 'block';
+  allItems.slice(0, 50).forEach(item => {
+    const li = document.createElement('li');
+    const link = document.createElement('a');
+    link.href = item.link;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = item.title;
+    li.appendChild(link);
+    if (item.pubDate) {
+      const dateSpan = document.createElement('span');
+      dateSpan.className = 'date';
+      dateSpan.textContent = item.pubDate.toLocaleString();
+      li.appendChild(dateSpan);
+    }
+    list.appendChild(li);
+  });
+}
+
+loadFeeds();
+</script>
 </body>
 </html>
