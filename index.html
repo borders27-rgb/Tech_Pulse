@@ -59,7 +59,16 @@ const FEEDS = [
   'https://www.pcgamer.com/rss/'
 ];
 
-const REQUEST_TIMEOUT_MS = 8000;
+const REQUEST_TIMEOUT_MS = 12000;
+const MAX_CONCURRENT_FEEDS = 6;
+
+const FEED_FETCHERS = [
+  (url) => url,
+  (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+  (url) => `https://cors.isomorphic-git.org/${url}`,
+  (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+  (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`
+];
 
 async function fetchWithTimeout(url, timeoutMs) {
   const controller = new AbortController();
@@ -72,15 +81,32 @@ async function fetchWithTimeout(url, timeoutMs) {
   }
 }
 
-async function fetchFeed(url) {
-  const proxy = 'https://api.allorigins.win/raw?url=';
-  const res = await fetchWithTimeout(proxy + encodeURIComponent(url), REQUEST_TIMEOUT_MS);
+async function fetchFeedText(url) {
+  let lastError = null;
 
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status}`);
+  for (const buildUrl of FEED_FETCHERS) {
+    try {
+      const res = await fetchWithTimeout(buildUrl(url), REQUEST_TIMEOUT_MS);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      const text = await res.text();
+      if (!text || text.length < 32 || !text.includes('<')) {
+        throw new Error('Unexpected response body');
+      }
+
+      return text;
+    } catch (error) {
+      lastError = error;
+    }
   }
 
-  const text = await res.text();
+  throw lastError || new Error('All feed fetch attempts failed');
+}
+
+async function fetchFeed(url) {
+  const text = await fetchFeedText(url);
   const parser = new DOMParser();
   const xml = parser.parseFromString(text, 'application/xml');
 
@@ -103,6 +129,30 @@ async function fetchFeed(url) {
     .filter((item) => item.title && item.link);
 }
 
+async function runFeedJobsWithConcurrency(items, limit, job) {
+  const settledResults = [];
+  let currentIndex = 0;
+
+  async function worker() {
+    while (currentIndex < items.length) {
+      const index = currentIndex;
+      currentIndex += 1;
+
+      try {
+        const value = await job(items[index]);
+        settledResults[index] = { status: 'fulfilled', value };
+      } catch (reason) {
+        settledResults[index] = { status: 'rejected', reason };
+      }
+    }
+  }
+
+  const workerCount = Math.min(limit, items.length);
+  const workers = Array.from({ length: workerCount }, () => worker());
+  await Promise.all(workers);
+  return settledResults;
+}
+
 async function loadFeeds() {
   const list = document.getElementById('list');
   const status = document.getElementById('status');
@@ -115,16 +165,17 @@ async function loadFeeds() {
 
   updateStatus();
 
-  const feedPromises = FEEDS.map((feed) =>
-    fetchFeed(feed)
-      .then((items) => items)
-      .finally(() => {
-        completed += 1;
-        updateStatus();
-      })
+  const settled = await runFeedJobsWithConcurrency(
+    FEEDS,
+    MAX_CONCURRENT_FEEDS,
+    (feed) =>
+      fetchFeed(feed)
+        .then((items) => items)
+        .finally(() => {
+          completed += 1;
+          updateStatus();
+        })
   );
-
-  const settled = await Promise.allSettled(feedPromises);
   const allItems = settled
     .filter((result) => result.status === 'fulfilled')
     .flatMap((result) => result.value);
