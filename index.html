@@ -1,4 +1,3 @@
-
 <!doctype html>
 <html lang="en">
 <head>
@@ -20,6 +19,22 @@
   <p id="status">Loading tech signals...</p>
   <ul id="list" style="display:none;"></ul>
 <script>
+(function cleanupServiceWorkersAndCaches() {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker
+      .getRegistrations()
+      .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+      .catch(() => {});
+  }
+
+  if ('caches' in window) {
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
+      .catch(() => {});
+  }
+})();
+
 const FEEDS = [
   'https://techcrunch.com/feed/',
   'https://feeds.arstechnica.com/arstechnica/index',
@@ -32,10 +47,7 @@ const FEEDS = [
   'https://gizmodo.com/rss',
   'https://feeds.bloomberg.com/bloomberg/technologynews',
   'https://9to5mac.com/feed/',
-  'http://feeds.businessinsider.com/businessinsider',
   'https://www.pcmag.com/feed',
-  'http://feeds.reuters.com/reuters/technologyNews',
-  'http://feeds.mashable.com/Mashable',
   'https://www.esquire.com/rss/all.xml',
   'https://www.cultofmac.com/feed/',
   'https://www.nytimes.com/wirecutter/feed/',
@@ -43,53 +55,96 @@ const FEEDS = [
   'https://feeds.marketwatch.com/marketwatch/topstories/',
   'https://www.macrumors.com/rss.php',
   'https://www.engadget.com/rss.xml',
-  'http://fortune.com/feed/',
   'https://www.fastcompany.com/rss',
   'https://www.pcgamer.com/rss/'
 ];
 
+const REQUEST_TIMEOUT_MS = 8000;
+
+async function fetchWithTimeout(url, timeoutMs) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function fetchFeed(url) {
   const proxy = 'https://api.allorigins.win/raw?url=';
-  const res = await fetch(proxy + encodeURIComponent(url));
+  const res = await fetchWithTimeout(proxy + encodeURIComponent(url), REQUEST_TIMEOUT_MS);
+
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+
   const text = await res.text();
   const parser = new DOMParser();
   const xml = parser.parseFromString(text, 'application/xml');
-  const items = Array.from(xml.querySelectorAll('item, entry')).map(item => {
-    const title = item.querySelector('title')?.textContent || '';
-    const linkNode = item.querySelector('link');
-    const linkAttr = linkNode?.getAttribute('href');
-    const link = linkAttr || linkNode?.textContent || '';
-    const pubNode = item.querySelector('pubDate') || item.querySelector('updated') || item.querySelector('published');
-    const pubDate = pubNode ? new Date(pubNode.textContent) : null;
-    return { title: title.trim(), link: link.trim(), pubDate };
-  });
-  return items;
+
+  if (xml.querySelector('parsererror')) {
+    throw new Error('Invalid XML');
+  }
+
+  return Array.from(xml.querySelectorAll('item, entry'))
+    .map((item) => {
+      const title = item.querySelector('title')?.textContent?.trim() || '';
+      const linkNode = item.querySelector('link');
+      const linkAttr = linkNode?.getAttribute('href');
+      const link = (linkAttr || linkNode?.textContent || '').trim();
+      const pubNode = item.querySelector('pubDate, updated, published');
+      const pubDate = pubNode?.textContent ? new Date(pubNode.textContent) : null;
+      const validDate = pubDate && !Number.isNaN(pubDate.getTime()) ? pubDate : null;
+
+      return { title, link, pubDate: validDate };
+    })
+    .filter((item) => item.title && item.link);
 }
 
 async function loadFeeds() {
-  let allItems = [];
-  for (const feed of FEEDS) {
-    try {
-      const items = await fetchFeed(feed);
-      allItems.push(...items);
-    } catch (err) {
-      console.error('Error fetching', feed, err);
-    }
-  }
+  const list = document.getElementById('list');
+  const status = document.getElementById('status');
+  const totalFeeds = FEEDS.length;
+  let completed = 0;
+
+  const updateStatus = () => {
+    status.textContent = `Loading tech signals... (${completed}/${totalFeeds})`;
+  };
+
+  updateStatus();
+
+  const feedPromises = FEEDS.map((feed) =>
+    fetchFeed(feed)
+      .then((items) => items)
+      .finally(() => {
+        completed += 1;
+        updateStatus();
+      })
+  );
+
+  const settled = await Promise.allSettled(feedPromises);
+  const allItems = settled
+    .filter((result) => result.status === 'fulfilled')
+    .flatMap((result) => result.value);
+
   allItems.sort((a, b) => {
     const at = a.pubDate ? a.pubDate.getTime() : 0;
     const bt = b.pubDate ? b.pubDate.getTime() : 0;
     return bt - at;
   });
-  const list = document.getElementById('list');
-  const status = document.getElementById('status');
+
   if (allItems.length === 0) {
-    status.textContent = 'No items found.';
+    status.textContent = 'No items found (feeds blocked or proxy down). Try again.';
     return;
   }
+
+  list.innerHTML = '';
   status.style.display = 'none';
   list.style.display = 'block';
-  allItems.slice(0, 50).forEach(item => {
+
+  allItems.slice(0, 50).forEach((item) => {
     const li = document.createElement('li');
     const link = document.createElement('a');
     link.href = item.link;
@@ -97,12 +152,14 @@ async function loadFeeds() {
     link.rel = 'noopener noreferrer';
     link.textContent = item.title;
     li.appendChild(link);
+
     if (item.pubDate) {
       const dateSpan = document.createElement('span');
       dateSpan.className = 'date';
       dateSpan.textContent = item.pubDate.toLocaleString();
       li.appendChild(dateSpan);
     }
+
     list.appendChild(li);
   });
 }
