@@ -17,59 +17,72 @@ const JSON_HEADERS = {
   'Access-Control-Allow-Headers': 'Content-Type'
 };
 
+const ITEM_BLOCK_RE = /<item\b[^>]*>[\s\S]*?<\/item>/gi;
+const ENTRY_BLOCK_RE = /<entry\b[^>]*>[\s\S]*?<\/entry>/gi;
+const TITLE_RE = /<title[^>]*>([\s\S]*?)<\/title>/i;
+const LINK_TEXT_RE = /<link[^>]*>([\s\S]*?)<\/link>/i;
+const LINK_HREF_RE = /<link[^>]*href=["']([^"']+)["'][^>]*\/?>(?:<\/link>)?/i;
+const ID_RE = /<id[^>]*>([\s\S]*?)<\/id>/i;
+const PUB_DATE_RE = /<pubDate[^>]*>([\s\S]*?)<\/pubDate>/i;
+const UPDATED_RE = /<updated[^>]*>([\s\S]*?)<\/updated>/i;
+const PUBLISHED_RE = /<published[^>]*>([\s\S]*?)<\/published>/i;
+const DC_DATE_RE = /<dc:date[^>]*>([\s\S]*?)<\/dc:date>/i;
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
 }
 
-function stripCdata(value: string): string {
-  return value.replace(/<!\[CDATA\[|\]\]>/g, '').trim();
-}
-
-function decodeXmlEntities(value: string): string {
+function cleanValue(value: string): string {
   return value
+    .replace(/<!\[CDATA\[|\]\]>/g, '')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
+    .replace(/&#39;/g, "'")
+    .trim();
 }
 
-function getTagValue(block: string, tags: string[]): string {
-  for (const tag of tags) {
-    const direct = block.match(new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, 'i'))?.[1];
-    if (direct) return decodeXmlEntities(stripCdata(direct));
-
-    const selfClosingHref = block.match(new RegExp(`<${tag}[^>]*href=["']([^"']+)["'][^>]*/?>`, 'i'))?.[1];
-    if (selfClosingHref) return decodeXmlEntities(selfClosingHref.trim());
+function firstMatch(block: string, patterns: RegExp[]): string {
+  for (const pattern of patterns) {
+    const match = block.match(pattern)?.[1];
+    if (match) return cleanValue(match);
   }
   return '';
 }
 
-function extractItems(xml: string, feedUrl: string): AggregatedItem[] {
-  const sourceName = (() => {
-    try {
-      return new URL(feedUrl).hostname;
-    } catch {
-      return feedUrl;
-    }
-  })();
+function extractLink(block: string): string {
+  return firstMatch(block, [LINK_HREF_RE, LINK_TEXT_RE, ID_RE]);
+}
 
-  const blocks = [
-    ...xml.matchAll(/<item\b[^>]*>[\s\S]*?<\/item>/gi),
-    ...xml.matchAll(/<entry\b[^>]*>[\s\S]*?<\/entry>/gi)
-  ];
+function normalizeDate(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return new Date(0).toISOString();
+  return parsed.toISOString();
+}
+
+function getSourceName(feedUrl: string): string {
+  try {
+    return new URL(feedUrl).hostname;
+  } catch {
+    return feedUrl;
+  }
+}
+
+function extractItems(xml: string, feedUrl: string): AggregatedItem[] {
+  const sourceName = getSourceName(feedUrl);
+  const blocks = [...xml.matchAll(ITEM_BLOCK_RE), ...xml.matchAll(ENTRY_BLOCK_RE)].map((m) => m[0]);
 
   return blocks
-    .map((match) => {
-      const block = match[0];
-      const title = getTagValue(block, ['title']);
-      const link = getTagValue(block, ['link', 'id']);
-      const date = getTagValue(block, ['pubDate', 'updated', 'published', 'dc:date']);
+    .map((block) => {
+      const title = firstMatch(block, [TITLE_RE]) || 'Untitled';
+      const link = extractLink(block);
+      const date = normalizeDate(firstMatch(block, [PUB_DATE_RE, UPDATED_RE, PUBLISHED_RE, DC_DATE_RE]));
 
       return {
-        title: title || 'Untitled',
-        link: link.trim(),
-        date: date ? new Date(date).toISOString() : new Date(0).toISOString(),
+        title,
+        link,
+        date,
         source: feedUrl,
         sourceName
       };
@@ -93,32 +106,23 @@ async function fetchFeed(feedUrl: string): Promise<AggregatedItem[]> {
   return extractItems(xml, feedUrl);
 }
 
-function normalizeDate(value: string): string {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return new Date(0).toISOString();
-  return parsed.toISOString();
-}
-
 async function aggregate(feeds: string[]): Promise<AggregatedItem[]> {
   const settled = await Promise.allSettled(feeds.map((feed) => fetchFeed(feed)));
   const flattened = settled.flatMap((result) => (result.status === 'fulfilled' ? result.value : []));
 
   const byLink = new Map<string, AggregatedItem>();
+
   for (const item of flattened) {
-    const link = item.link.trim();
-    if (!link) continue;
+    const key = item.link.trim();
+    if (!key) continue;
 
-    const normalized = { ...item, date: normalizeDate(item.date) };
-    const existing = byLink.get(link);
-
-    if (!existing || new Date(normalized.date).getTime() > new Date(existing.date).getTime()) {
-      byLink.set(link, normalized);
+    const existing = byLink.get(key);
+    if (!existing || new Date(item.date).getTime() > new Date(existing.date).getTime()) {
+      byLink.set(key, item);
     }
   }
 
-  return [...byLink.values()].sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
+  return [...byLink.values()].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
 export default {
@@ -130,7 +134,7 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === '/health') {
-      return jsonResponse({ ok: true, service: 'techpulse-worker', timestamp: new Date().toISOString() });
+      return jsonResponse({ ok: true, service: 'techpulse-worker', generatedAt: new Date().toISOString() });
     }
 
     if (url.pathname === '/aggregate') {
