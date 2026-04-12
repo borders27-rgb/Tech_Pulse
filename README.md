@@ -1,67 +1,26 @@
 # TechPulse
 
-TechPulse is organized as a two-app monorepo with one canonical frontend and one canonical backend:
+TechPulse has one canonical frontend and one canonical backend:
 
-- `apps/web` → canonical Next.js frontend
-- `apps/worker` → canonical Cloudflare Worker aggregation API
+- `apps/web` = canonical frontend
+- `apps/worker` = canonical backend aggregation API
 
-## Canonical entry points
+## Source of truth
 
-- Frontend entry point: `apps/web/app/page.js` (the only homepage implementation)
-- Backend aggregate endpoint: `apps/worker/src/index.ts` at `/aggregate`
+- Only frontend entry point: `apps/web/app/page.js`
+- Canonical backend entry point: `apps/worker/src/index.ts`
 
-The frontend renders live Worker data from `/aggregate` and no longer uses mock/demo signal generation.
-Duplicate frontend paths and legacy competing static frontend artifacts were removed.
+The old root static site is removed and is **not** the app anymore. GitHub Pages must deploy the canonical `apps/web` output.
 
-## Web app (`apps/web`)
+## Why the old Pages URL showed the wrong frontend
 
-### Environment
+`https://borders27-rgb.github.io/Tech_Pulse/` was serving legacy root static artifacts (`index.html`-style flow) rather than a deployment artifact built from `apps/web`. This made Pages open the old TechPulse Signals page instead of the canonical Next frontend.
 
-Create `apps/web/.env.local` (you can copy `apps/web/.env.example`):
+## Local development
 
-```bash
-TECHPULSE_AGGREGATE_URL=https://your-worker-subdomain.workers.dev/aggregate
-```
+### 1) Worker (`apps/worker`)
 
-`NEXT_PUBLIC_AGGREGATE_URL` is supported as a fallback, but `TECHPULSE_AGGREGATE_URL` is preferred.
-
-### Run locally
-
-```bash
-cd apps/web
-npm install
-npm run dev
-```
-
-Then open `http://localhost:3000`.
-
-## Worker (`apps/worker`)
-
-The Worker exposes:
-
-- `GET /health`
-- `GET /aggregate`
-
-`/aggregate` fetches feeds from `FEEDS`, parses RSS/Atom items, deduplicates by link, sorts by newest date, and returns:
-
-```json
-{
-  "items": [],
-  "count": 0,
-  "generatedAt": "2026-04-12T00:00:00.000Z"
-}
-```
-
-### Configure feeds
-
-Set `FEEDS` in `apps/worker/wrangler.toml` or with `wrangler secret put`/environment config:
-
-```toml
-[vars]
-FEEDS = "https://example.com/rss,https://hnrss.org/frontpage"
-```
-
-### Run locally
+Configure feeds in `apps/worker/wrangler.toml` (`FEEDS`), then run:
 
 ```bash
 cd apps/worker
@@ -69,4 +28,42 @@ bun install
 bunx wrangler dev
 ```
 
-The default local Worker URL is typically `http://127.0.0.1:8787`.
+### 2) Web (`apps/web`)
+
+Create `apps/web/.env.local` (or set repo variable for Pages):
+
+```bash
+TECHPULSE_AGGREGATE_URL=https://your-worker-subdomain.workers.dev/aggregate
+```
+
+Fallback is also supported:
+
+```bash
+NEXT_PUBLIC_AGGREGATE_URL=https://your-worker-subdomain.workers.dev/aggregate
+```
+
+Run locally:
+
+```bash
+cd apps/web
+npm install
+npm run dev
+```
+
+## GitHub Pages deployment (canonical frontend only)
+
+Workflow: `.github/workflows/deploy-pages.yml`
+
+- Builds from `apps/web` only
+- Publishes `apps/web/out` as the Pages artifact
+- Does **not** use root legacy static files
+
+Set one repo variable for Pages runtime fetch:
+
+- `NEXT_PUBLIC_AGGREGATE_URL` (recommended)
+
+Optional:
+
+- `TECHPULSE_AGGREGATE_URL`
+
+After merge to `main`, the Pages workflow deploys the canonical frontend.

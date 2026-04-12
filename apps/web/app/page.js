@@ -1,4 +1,6 @@
-export const dynamic = 'force-dynamic';
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
 
 const AGGREGATE_URL =
   process.env.TECHPULSE_AGGREGATE_URL || process.env.NEXT_PUBLIC_AGGREGATE_URL;
@@ -22,65 +24,63 @@ function inferSourceType(item) {
   return 'News';
 }
 
-async function fetchAggregate() {
-  if (!AGGREGATE_URL) {
-    return {
-      ok: false,
-      error:
-        'Missing TECHPULSE_AGGREGATE_URL (or NEXT_PUBLIC_AGGREGATE_URL). Add it to apps/web/.env.local.',
-      data: null
-    };
-  }
+export default function Page() {
+  const [data, setData] = useState({ items: [], count: 0, generatedAt: null });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
 
-  try {
-    const response = await fetch(AGGREGATE_URL, {
-      cache: 'no-store',
-      headers: { Accept: 'application/json' }
-    });
+  useEffect(() => {
+    async function loadAggregate() {
+      if (!AGGREGATE_URL) {
+        setError(
+          'Missing TECHPULSE_AGGREGATE_URL (or NEXT_PUBLIC_AGGREGATE_URL). Set it in apps/web/.env.local or repo variables.'
+        );
+        setLoading(false);
+        return;
+      }
 
-    if (!response.ok) {
-      return {
-        ok: false,
-        error: `Worker request failed (${response.status} ${response.statusText}).`,
-        data: null
-      };
+      try {
+        const response = await fetch(AGGREGATE_URL, {
+          cache: 'no-store',
+          headers: { Accept: 'application/json' }
+        });
+
+        if (!response.ok) {
+          throw new Error(`Worker request failed (${response.status} ${response.statusText}).`);
+        }
+
+        const payload = await response.json();
+        const items = Array.isArray(payload?.items) ? payload.items : [];
+
+        setData({
+          items,
+          count: typeof payload?.count === 'number' ? payload.count : items.length,
+          generatedAt: payload?.generatedAt || null
+        });
+      } catch (requestError) {
+        setError(requestError instanceof Error ? requestError.message : 'Unable to reach aggregate endpoint.');
+      } finally {
+        setLoading(false);
+      }
     }
 
-    const data = await response.json();
-    const items = Array.isArray(data?.items) ? data.items : [];
+    loadAggregate();
+  }, []);
 
-    return {
-      ok: true,
-      error: null,
-      data: {
-        items,
-        count: typeof data?.count === 'number' ? data.count : items.length,
-        generatedAt: data?.generatedAt || null
-      }
-    };
-  } catch {
-    return {
-      ok: false,
-      error: 'Unable to reach the Worker aggregate endpoint.',
-      data: null
-    };
-  }
-}
+  const sourceMix = useMemo(() => {
+    return data.items.reduce((acc, item) => {
+      const label = inferSourceType(item);
+      acc[label] = (acc[label] || 0) + 1;
+      return acc;
+    }, {});
+  }, [data.items]);
 
-export default async function Page() {
-  const result = await fetchAggregate();
-  const items = result.data?.items || [];
-
-  const sourceMix = items.reduce((acc, item) => {
-    const label = inferSourceType(item);
-    acc[label] = (acc[label] || 0) + 1;
-    return acc;
-  }, {});
-
-  const latestItemDate = items
-    .map((item) => new Date(item.date))
-    .filter((date) => !Number.isNaN(date.getTime()))
-    .sort((a, b) => b.getTime() - a.getTime())[0];
+  const latestItemDate = useMemo(() => {
+    return data.items
+      .map((item) => new Date(item.date))
+      .filter((date) => !Number.isNaN(date.getTime()))
+      .sort((a, b) => b.getTime() - a.getTime())[0];
+  }, [data.items]);
 
   return (
     <main
@@ -97,11 +97,11 @@ export default async function Page() {
         <header style={{ marginBottom: '1.5rem' }}>
           <h1 style={{ margin: 0, fontSize: '2rem' }}>TechPulse</h1>
           <p style={{ marginTop: '.5rem', color: '#475569' }}>
-            Live technology feed powered by the Worker aggregate API.
+            Canonical frontend from <code>apps/web/app/page.js</code> using live Worker aggregate data.
           </p>
         </header>
 
-        {!result.ok && (
+        {error && (
           <div
             style={{
               border: '1px solid #fecaca',
@@ -112,7 +112,7 @@ export default async function Page() {
               marginBottom: '1rem'
             }}
           >
-            <strong>Data unavailable:</strong> {result.error}
+            <strong>Data unavailable:</strong> {error}
           </div>
         )}
 
@@ -124,7 +124,8 @@ export default async function Page() {
             marginBottom: '1.5rem'
           }}
         >
-          <StatCard label="Item count" value={String(result.data?.count || 0)} />
+          <StatCard label="Status" value={loading ? 'Loading…' : 'Live'} />
+          <StatCard label="Item count" value={String(data.count || 0)} />
           <StatCard
             label="Source mix"
             value={
@@ -141,7 +142,7 @@ export default async function Page() {
           />
           <StatCard
             label="Generated at"
-            value={result.data?.generatedAt ? formatDate(result.data.generatedAt) : 'Unknown'}
+            value={data.generatedAt ? formatDate(data.generatedAt) : 'Unknown'}
           />
         </section>
 
@@ -152,7 +153,7 @@ export default async function Page() {
             gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))'
           }}
         >
-          {items.map((item, index) => (
+          {data.items.map((item, index) => (
             <article
               key={`${item.link || item.title || 'item'}-${index}`}
               style={{

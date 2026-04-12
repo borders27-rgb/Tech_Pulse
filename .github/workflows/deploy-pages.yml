@@ -1,22 +1,56 @@
-name: Web Build Check
+name: Deploy Canonical Frontend (GitHub Pages)
+
 on:
   push:
-    paths: ["apps/web/**", ".github/workflows/deploy-pages.yml"]
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - '.github/workflows/deploy-pages.yml'
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
 jobs:
-  build:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-      - name: Install dependencies
+          node-version: '20'
+
+      - name: Install web dependencies
         run: |
           cd apps/web
           npm install
-      - name: Build Next.js app
+
+      - name: Build canonical frontend
+        env:
+          NEXT_PUBLIC_AGGREGATE_URL: ${{ vars.NEXT_PUBLIC_AGGREGATE_URL }}
+          TECHPULSE_AGGREGATE_URL: ${{ vars.TECHPULSE_AGGREGATE_URL }}
         run: |
           cd apps/web
           npm run build
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload static artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/web/out
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
