@@ -1,7 +1,10 @@
-name: Deploy Pages
+name: Web Build Check
+
 on:
   push:
-    paths: ["apps/web/**", ".github/workflows/deploy-pages.yml"]
+    paths:
+      - 'apps/web/**'
+      - '.github/workflows/deploy-pages.yml'
   workflow_dispatch:
 
 jobs:
@@ -9,8 +12,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-      - name: Install & Build
-        run: cd apps/web && npm install && npm run build
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          cd apps/web
+          npm install
+
+      - name: Build Next.js app
+        run: |
+          cd apps/web
+          npm run build
