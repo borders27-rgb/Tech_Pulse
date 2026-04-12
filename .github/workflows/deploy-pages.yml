@@ -1,4 +1,4 @@
-name: Deploy Pages
+name: Web Build Check
 on:
   push:
     paths: ["apps/web/**", ".github/workflows/deploy-pages.yml"]
@@ -12,5 +12,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Install & Build
-        run: cd apps/web && npm install && npm run build
+      - name: Install dependencies
+        run: |
+          cd apps/web
+          npm install
+      - name: Build Next.js app
+        run: |
+          cd apps/web
+          npm run build
