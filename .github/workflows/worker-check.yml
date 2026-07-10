@@ -1,22 +1,26 @@
-name: Deploy Worker
+name: Worker Check
 
 on:
+  pull_request:
+    paths:
+      - 'apps/worker/**'
+      - '.github/workflows/worker-check.yml'
   push:
     branches: [main]
     paths:
       - 'apps/worker/**'
-      - '.github/workflows/deploy-worker-workflow.yml'
+      - '.github/workflows/worker-check.yml'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: deploy-worker
+  group: worker-check-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  typecheck:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -32,10 +36,3 @@ jobs:
       - name: Typecheck
         working-directory: apps/worker
         run: npm run typecheck
-
-      - name: Deploy
-        working-directory: apps/worker
-        run: npm run deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

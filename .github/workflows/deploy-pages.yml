@@ -1,7 +1,12 @@
 name: Web Build Check
 
 on:
+  pull_request:
+    paths:
+      - 'apps/web/**'
+      - '.github/workflows/deploy-pages.yml'
   push:
+    branches: [main]
     paths:
       - 'apps/web/**'
       - '.github/workflows/deploy-pages.yml'
@@ -9,18 +14,13 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
-  cancel-in-progress: false
+  group: web-build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,11 +30,11 @@ jobs:
           node-version: '20'
 
       - name: Install dependencies
-        run: |
-          cd apps/web
-          npm install
+        working-directory: apps/web
+        run: npm install --no-audit --no-fund
 
-      - name: Build Next.js app
-        run: |
-          cd apps/web
-          npm run build
+      - name: Build
+        working-directory: apps/web
+        env:
+          TECHPULSE_AGGREGATE_URL: https://example.invalid/aggregate
+        run: npm run build
