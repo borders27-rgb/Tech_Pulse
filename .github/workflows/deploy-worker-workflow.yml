@@ -1,4 +1,5 @@
-name: Deploy Worker
+name: Worker Check and Deploy
+
 on:
   push:
     paths: ["apps/worker/**", ".github/workflows/deploy-worker-workflow.yml"]
@@ -9,17 +10,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v1
-      - name: Install deps
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: apps/worker/package.json
+
+      - name: Install dependencies
         run: |
           cd apps/worker
-          bun install
-      - name: Publish
+          npm install
+
+      - name: Typecheck Worker
+        run: |
+          cd apps/worker
+          npm run typecheck
+
+      - name: Deploy Worker
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          command: |
-            --version
-            publish
+          workingDirectory: apps/worker
+          command: deploy --config wrangler.toml
         env:
           CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

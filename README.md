@@ -4,10 +4,10 @@ TechPulse is a trend intelligence platform that aggregates signals from multiple
 
 ## Structure
 
-- **`apps/web`** – canonical frontend built with Next.js (App Router). The homepage is located at `apps/web/app/page.js` and fetches live aggregated data from the Worker backend.
-- **`apps/worker`** – canonical backend implemented as a Cloudflare Worker. It aggregates RSS/Atom feeds defined in the `FEEDS` environment variable and exposes them via `/aggregate`.
+- **`apps/web`** - canonical frontend built with Next.js (App Router). The homepage is located at `apps/web/app/page.js` and fetches live aggregated data from the Worker backend.
+- **`apps/worker`** - canonical backend implemented as a Cloudflare Worker. It aggregates RSS/Atom feeds defined in the `FEEDS` environment variable and exposes them via `/aggregate`.
 
-Legacy static pages and duplicate front‑end implementations have been removed to avoid confusion. The **only** frontend entry point is `apps/web/app/page.js`.
+Legacy static pages and duplicate frontend implementations have been removed to avoid confusion. The **only** frontend entry point is `apps/web/app/page.js`.
 
 ## Local Development
 
@@ -15,9 +15,11 @@ Legacy static pages and duplicate front‑end implementations have been removed 
 
 ```bash
 cd apps/worker
-bun install
-bunx wrangler dev
+npm install
+npm run dev
 ```
+
+The Worker runs at http://127.0.0.1:8787 by default. Its aggregate endpoint is http://127.0.0.1:8787/aggregate.
 
 ### Web
 
@@ -37,6 +39,23 @@ npm run dev
 
 Open http://localhost:3000/ to view the dashboard.
 
+## Checks
+
+```bash
+cd apps/web
+npm run build
+
+cd ../worker
+npm run typecheck
+```
+
 ## Deployment
 
-Deploy the Worker using Cloudflare Wrangler. For the frontend, build with `next build` (no static export) and deploy the output to a platform that supports serverless functions or dynamic environments. GitHub Pages is not suited for dynamic fetches; instead use Vercel or another serverless host.
+Deploy the Worker with Cloudflare Wrangler:
+
+```bash
+cd apps/worker
+npm run deploy
+```
+
+For the frontend, build with `next build` and deploy to a host that supports dynamic Next.js rendering and environment variables. GitHub Pages is not suited for this app because the dashboard fetches live Worker data at request time.
