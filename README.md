@@ -7,7 +7,7 @@ TechPulse is a trend intelligence platform that aggregates signals from multiple
 - **`apps/web`** – canonical frontend built with Next.js (App Router). The homepage is located at `apps/web/app/page.js` and fetches live aggregated data from the Worker backend.
 - **`apps/worker`** – canonical backend implemented as a Cloudflare Worker. It aggregates RSS/Atom feeds defined in the `FEEDS` environment variable and exposes them via `/aggregate`.
 
-Legacy static pages and duplicate front‑end implementations have been removed to avoid confusion. The **only** frontend entry point is `apps/web/app/page.js`.
+Legacy static pages and duplicate front-end implementations have been removed to avoid confusion. The only frontend entry point is `apps/web/app/page.js`.
 
 ## Local Development
 
@@ -39,4 +39,11 @@ Open http://localhost:3000/ to view the dashboard.
 
 ## Deployment
 
-Deploy the Worker using Cloudflare Wrangler. For the frontend, build with `next build` (no static export) and deploy the output to a platform that supports serverless functions or dynamic environments. GitHub Pages is not suited for dynamic fetches; instead use Vercel or another serverless host.
+The canonical deployment path is:
+
+1. Deploy `apps/worker` to Cloudflare Workers.
+2. Enable its production `workers.dev` URL.
+3. Set `TECHPULSE_AGGREGATE_URL` in Vercel to that URL plus `/aggregate`.
+4. Deploy `apps/web` to Vercel.
+
+The frontend uses dynamic server rendering, so GitHub Pages and static export are not supported deployment targets.

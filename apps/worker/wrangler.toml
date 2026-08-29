@@ -1,4 +1,4 @@
-name = "techpulse-worker"
+name = "techpulse0"
 main = "src/index.ts"
 compatibility_date = "2025-09-30"
 
